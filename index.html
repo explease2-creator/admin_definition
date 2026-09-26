@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Administrative Law Definition Exam v1.5</title>
+<title>法学 定義暗記 SYSTEM v2.0</title>
 
 <style>
 body {
@@ -21,6 +21,42 @@ body {
     margin-bottom: 10px;
 }
 
+/* 🏛️ 최상위 7법 과목 선택 탭 */
+.subject-tab {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    background: #e2e8f0;
+    padding: 6px;
+    border-radius: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.subject-tab::-webkit-scrollbar {
+    display: none;
+}
+
+.subject-tab button {
+    flex: 0 0 auto;
+    padding: 9px 13px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: #4a5568;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+    margin-top: 0;
+}
+
+.subject-tab button.active {
+    background: #2c3e50;
+    color: white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+
 /* 카드 */
 .card {
     background: white;
@@ -30,7 +66,7 @@ body {
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
-/* タブ */
+/* 機能 タブ */
 .tab {
     display: flex;
     gap: 8px;
@@ -46,6 +82,7 @@ body {
     font-size: 14px;
     font-weight: bold;
     cursor: pointer;
+    margin-top: 0;
 }
 
 .tab button.active {
@@ -296,9 +333,20 @@ small { color: gray; font-size: 12px; }
 
 <body>
 
-<div class="top">⚖️ 行政法 定義暗記 SYSTEM v1.5</div>
+<div class="top">⚖️ 法学 定義暗記 SYSTEM v2.0</div>
 
-<!-- タブ切り替え -->
+<!-- 🏛️ 7법 최상위 과목 탭 -->
+<div class="subject-tab">
+    <button class="btn-subject active" data-subject="constitution" data-title="憲法">📜 憲法</button>
+    <button class="btn-subject" data-subject="admin" data-title="行政法">🏛️ 行政法</button>
+    <button class="btn-subject" data-subject="civil" data-title="民法">📘 民法</button>
+    <button class="btn-subject" data-subject="civ_pro" data-title="民事訴訟法">📑 民訴法</button>
+    <button class="btn-subject" data-subject="comm" data-title="商法">🏢 商法</button>
+    <button class="btn-subject" data-subject="penal" data-title="刑法">📕 刑法</button>
+    <button class="btn-subject" data-subject="crim_pro" data-title="刑事訴訟法">⚖️ 刑訴法</button>
+</div>
+
+<!-- 기능 탭切り替え -->
 <div class="tab">
 <button id="btnDB" class="active">📚 データベース</button>
 <button id="btnExam">🎯 穴埋め試験</button>
@@ -306,9 +354,9 @@ small { color: gray; font-size: 12px; }
 
 <!-- ================= DB管理画面 ================= -->
 <div id="dbArea" class="card">
-<h3>📥 定義登録</h3>
-<input id="defTerm" placeholder="定義名・概念名 (例: {行政行為}, 撤回 など)">
-<input id="tags" placeholder="タグ (カンマ(,)で複数入力可. 例: 行政行為, 撤回)">
+<h3 id="dbTitle">📥 [憲法] 定義登録</h3>
+<input id="defTerm" placeholder="定義名・概念名 (例: {違憲審査権}, 撤回 など)">
+<input id="tags" placeholder="タグ (カンマ(,)で複数入力可. 例: 司法権, 統治機構)">
 <input id="importance" placeholder="重要度 (例: A, B, 重要度高 など)">
 <textarea id="qText" rows="5" placeholder="定義文 ( 空欄: {正解} / 強調: **テキスト** / 들여쓰기: > テキスト )"></textarea>
 <button id="btnAddQ">追加する</button>
@@ -319,7 +367,7 @@ small { color: gray; font-size: 12px; }
 
 <!-- ================= 試験画面 ================= -->
 <div id="examArea" class="card hidden">
-<h3>🎯 試験作成</h3>
+<h3 id="examTitle">🎯 [憲法] 試験作成</h3>
 
 <!-- タグ別モード -->
 <div id="tagMode">
@@ -372,8 +420,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const dbInstance = getFirestore(app);
 
-/* 행정법 전용 데이터베이스 문서 경로 */
-const docRef = doc(dbInstance, "admin_exam", "admin_db_doc");
+/* ================= 🏛️ 과목 상태 및 Firestore 연결 관리 ================= */
+let currentSubject = "constitution";
+let currentSubjectTitle = "憲法";
+let docRef = null;
+let unsubscribeDoc = null;
 
 let db = []; 
 let currentTest = [];
@@ -383,18 +434,47 @@ function getCircNum(index) {
     return `(${index + 1})`;
 }
 
-onSnapshot(docRef, (docSnap) => {
-    if (docSnap.exists()) {
-        const data = docSnap.data();
-        db = data.questions ? data.questions : [];
-    } else {
-        db = [];
+// 과목 전환 함수
+function switchSubject(subjectKey, subjectTitle) {
+    currentSubject = subjectKey;
+    currentSubjectTitle = subjectTitle;
+
+    // 제목 업데이트
+    document.getElementById("dbTitle").textContent = `📥 [${currentSubjectTitle}] 定義登録`;
+    document.getElementById("examTitle").textContent = `🎯 [${currentSubjectTitle}] 試験作成`;
+
+    // 기존 리스너 해제
+    if (unsubscribeDoc) {
+        unsubscribeDoc();
     }
-    renderDB();
-    refreshDropdowns();
-});
+
+    // 기존 행정법 데이터 보존 호환성 처리
+    if (currentSubject === "admin") {
+        docRef = doc(dbInstance, "admin_exam", "admin_db_doc");
+    } else {
+        docRef = doc(dbInstance, "def_exam_db", currentSubject);
+    }
+
+    // 시험 진행 상태 초기화
+    currentTest = [];
+    document.getElementById("examOut").innerHTML = "";
+    document.getElementById("examCtrlArea").classList.add("hidden");
+
+    // 새 과목 DB 리스닝
+    unsubscribeDoc = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            db = data.questions ? data.questions : [];
+        } else {
+            db = [];
+        }
+        renderDB();
+        refreshDropdowns();
+    });
+}
 
 async function saveToFirestore(newData) {
+    if (!docRef) return;
     try {
         await setDoc(docRef, { questions: newData });
     } catch (error) {
@@ -457,6 +537,19 @@ function processQuestionBlanks(rawText, globalIndexObj, mode = 'preview', qIdx =
         }
     });
 }
+
+/* ================= 🏛️ 과목 탭 전환 이벤트 ================= */
+document.querySelectorAll(".btn-subject").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+        document.querySelectorAll(".btn-subject").forEach(b => b.classList.remove("active"));
+        const targetBtn = e.target.closest(".btn-subject");
+        targetBtn.classList.add("active");
+        
+        const subj = targetBtn.getAttribute("data-subject");
+        const title = targetBtn.getAttribute("data-title");
+        switchSubject(subj, title);
+    });
+});
 
 /* ================= タブ切り替え ================= */
 function showTab(tab) {
@@ -596,7 +689,7 @@ function renderDB() {
             let formattedTerm = processQuestionBlanks(q.defTerm || "定義名なし", counter, 'preview');
             let formattedQ = processQuestionBlanks(q.question, counter, 'preview');
 
-            html += `<div class="question"><div style="float:right; display:flex; gap:5px;"><button class="btn-edit-q" data-idx="${q._idx}" style="background:#f39c12; padding:5px 8px; font-size:12px; color:white; border:none; border-radius:4px; cursor:pointer; margin:0;">修正</button><button class="btn-delete" data-idx="${q._idx}" style="background:red; padding:5px 8px; font-size:12px; color:white; border:none; border-radius:4px; cursor:pointer; margin:0;">削除</button></div><div>${tagHtml}${impHtml}</div><div class="q-term-title"> ${formattedTerm}</div><div class="q-body">${formattedQ}</div></div>`;
+            html += `<div class="question"><div style="float:right; display:flex; gap:5px;"><button class="btn-edit-q" data-idx="${q._idx}" style="background:#f39c12; padding:5px 8px; font-size:12px; color:white; border:none; border-radius:4px; cursor:pointer; margin:0;">修正</button><button class="btn-delete" data-idx="${q._idx}" style="background:red; padding:5px 8px; font-size:12px; color:white; border:none; border-radius:4px; cursor:pointer; margin:0;">削除</button></div><div>${tagHtml}${impHtml}</div><div class="q-term-title">📘 ${formattedTerm}</div><div class="q-body">${formattedQ}</div></div>`;
         });
         html += `</div>`;
     });
@@ -678,7 +771,10 @@ function makeTagTest() {
     let selectedQuestions = shuffle(pool).slice(0, n);
     currentTest = prepareTestData(selectedQuestions);
     
-    let title = selectedTag === "all" ? `🎯 ランダム試験 [全体] (${currentTest.length}問)` : `🏷️ タグ別試験 [#${selectedTag}] (${currentTest.length}問)`;
+    let title = selectedTag === "all" 
+        ? `🎯 [${currentSubjectTitle}] ランダム試験 [全体] (${currentTest.length}問)` 
+        : `🏷️ [${currentSubjectTitle}] タグ別試験 [#${selectedTag}] (${currentTest.length}問)`;
+    
     renderExam(currentTest, title);
     resetGradeButtons();
 }
@@ -697,7 +793,7 @@ function renderExam(testData, title) {
         let tagHtml = q.tags && q.tags.length > 0 ? q.tags.map(t => `<span class="tag-badge">#${t}</span>`).join("") : "";
         let impHtml = q.importance ? `<span class="importance-badge">⭐ 重要度: ${q.importance}</span>` : "";
 
-        html += `<div class="question"><b>${i + 1}.</b> <div>${tagHtml}${impHtml}</div><div class="q-term-title"> ${maskedTerm}</div><div class="q-body">${maskedBody}</div></div>`;
+        html += `<div class="question"><b>${i + 1}.</b> <div>${tagHtml}${impHtml}</div><div class="q-term-title">📘 ${maskedTerm}</div><div class="q-body">${maskedBody}</div></div>`;
     });
 
     html += `</div>`;
@@ -777,7 +873,7 @@ function retryWrongTests() {
 
     if (wrongQuestions.length > 0) {
         currentTest = wrongQuestions;
-        renderExam(currentTest, `🔁 誤答復習試験 (${currentTest.length}問)`);
+        renderExam(currentTest, `🔁 [${currentSubjectTitle}] 誤答復習試験 (${currentTest.length}問)`);
         resetGradeButtons();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -794,6 +890,9 @@ document.getElementById("btnRetryWrong").addEventListener("click", retryWrongTes
 
 document.getElementById("btnCancelEdit").addEventListener("click", closeEditModal);
 document.getElementById("btnSaveEdit").addEventListener("click", saveEdit);
+
+// 🚀 초기 실행: 기본 과목(헌법) 로드
+switchSubject("constitution", "憲法");
 
 </script>
 
